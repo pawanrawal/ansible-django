@@ -1,0 +1,60 @@
+---
+- hosts: {{host}}
+  sudo: yes
+  gather_facts: no
+  tasks:
+    - name: apt get update upgrade
+      apt: update_cache=yes upgrade=safe
+    - name: install virtual:env
+      apt: name=python-virtualenv
+    - name: create virtualenv
+      command: virtualenv /opt/myenv creates=/opt/myenv
+    - name: install django
+      pip: name=django virtualenv=/opt/myenv
+    - name: install dependencies for postgres
+      apt: pkg={{item}}
+      with_items:
+        - libpq-dev
+        - python-dev
+        - python-psycopg2
+    - name: install postgres
+      apt: pkg={{item}}
+      with_items:
+        - postgresql
+        - postgresql-contrib
+    - name: install nginx
+      apt: name=nginx
+    - name: install gunicorn
+      pip: name=gunicorn virtualenv=/opt/myenv
+
+- hosts: {{host}}
+  sudo: yes
+  sudo_user: postgres
+  gather_facts: no
+
+  vars:
+    dbname: mydb
+    dbuser: django
+    dbpassword: mysupersecretpassword
+
+  tasks:
+  - name: create database
+    postgresql_db: name={{dbname}}
+
+  - name: grant all privilidges to user
+    postgresql_user: db={{dbname}} name={{dbuser}} password={{dbpassword}} priv=ALL
+
+  - name: ensure user does not have unnecessary privilege
+    postgresql_user: name={{dbuser}} role_attr_flags=NOSUPERUSER,NOCREATEDB
+
+- hosts: {{host}}
+  sudo: yes
+  gather_facts: no
+  tasks:
+  - name: start django project
+    shell: /opt/myenv/bin/python /opt/myenv/bin/django-admin.py startproject myproject
+    args:
+      chdir: /opt/myenv
+      creates: /opt/myenv/myproject
+  - name: install psycopg2
+    pip: name=psycopg2 virtualenv=/opt/myenv
